@@ -119,8 +119,9 @@ def download_and_merge(video_url: str, audio_url: str, output_path: str) -> None
 
 def parse_arguments():
     parser = ArgumentParser(description='Merge audio and video files into a single file.')
-    parser.add_argument('-v', '--video-url',        required=True,  dest='video_url',        metavar='URL',                       help='URL of the video file')
-    parser.add_argument('-a', '--audio-url',        required=True,  dest='audio_url',        metavar='URL',                       help='URL of the audio file')
+    parser.add_argument('-v', '--version',                          dest='version',                          action='version',                                                                        version='0.0.1')
+    parser.add_argument('-vu', '--video-url',       required=True,  dest='video_url',        metavar='URL',                       help='URL of the video file')
+    parser.add_argument('-au', '--audio-url',       required=True,  dest='audio_url',        metavar='URL',                       help='URL of the audio file')
     parser.add_argument('-o', '--output',           required=False, dest='output_path',      metavar='PATH',                      help='Output file path (including path, file name, and extension)')
     parser.add_argument('-l', '--generate-logfile', required=False, dest='generate_logfile',                 action='store_true', help='Enable logging to a file')
     parser.add_argument('-q', '--quiet',            required=False, dest='quiet',                            action='store_true', help='Silence terminal output')
