@@ -3,9 +3,10 @@ from random import choices
 from shutil import which, rmtree
 from subprocess import run
 from string import ascii_letters, digits
-from urllib.parse import unquote
+from urllib import parse, request
+from mimetypes import guess_extension
+from typing import Union
 from pathlib import Path
-from time import sleep
 from logging import basicConfig, DEBUG, INFO, info, error
 from pySmartDL import SmartDL
 from tempfile import gettempdir
@@ -16,13 +17,30 @@ def generate_random_string(length: int) -> str:
     return str().join(choices(ascii_letters + digits, k=length))
 
 
-def download_file(url: str, output_path: Path) -> None:
+def get_extension_from_url(url: str) -> Union[str, None]:
+    try:
+        with request.urlopen(url) as response:
+            _headers = response.headers
+            _content_type = _headers.get('Content-Type')
+
+        _returned_extension = guess_extension(_content_type)
+
+        if _returned_extension:
+            return _returned_extension
+        else:
+            return None
+    except Exception as e:
+        error(f'An error occurred while getting the extension from the URL: {e}')
+        return None
+
+
+def download_file(url: str, output_path: Path, max_connections: int = 5) -> None:
     if args.quiet or args.generate_logfile:
         progress_bar_status = False
     else:
         progress_bar_status = True
 
-    obj = SmartDL(url, dest=output_path.as_posix(), progress_bar=progress_bar_status, fix_urls=True, threads=40)
+    obj = SmartDL(url, dest=output_path.as_posix(), progress_bar=progress_bar_status, fix_urls=True, threads=max_connections)
     obj.start()
 
 
@@ -58,12 +76,10 @@ def download_and_merge(video_url: str, audio_url: str, output_path: str) -> None
         error('FFmpeg is not installed or not in the system PATH. Please install FFmpeg and try again.')
         exit()
 
-    info(f'Using temporary directory "{temp_dir.as_posix()}"...')
+    info(f'Using temporary directory at "{temp_dir.as_posix()}"...')
 
-    count_to_attempt = 1
-
-    video_url = unquote(video_url)
-    audio_url = unquote(audio_url)
+    video_url = parse.unquote(video_url)
+    audio_url = parse.unquote(audio_url)
 
     if not output_path:
         output_path = Path.cwd()
@@ -86,35 +102,37 @@ def download_and_merge(video_url: str, audio_url: str, output_path: str) -> None
             output_path = Path(output_path.as_posix().strip())
 
     output_path = Path(output_path).resolve()
-    video_path = Path(temp_dir, f'.video_{temp_num}.mp4').resolve()
-    audio_path = Path(temp_dir, f'.audio_{temp_num}.mp3').resolve()
-    info(f'Application will download the video file to "{video_path.as_posix()}", the audio file to "{audio_path.as_posix()}", and merge them into "{output_path.as_posix()}"...')
+    static_internal_temp_file_extension = '.?'
+    video_path = Path(temp_dir, f'.video_{temp_num}{static_internal_temp_file_extension}').resolve()
+    audio_path = Path(temp_dir, f'.audio_{temp_num}{static_internal_temp_file_extension}').resolve()
+    info(f'The video url will be downloaded at "{video_path.as_posix()}", the audio url at "{audio_path.as_posix()}". The merged file will be saved at "{output_path.as_posix()}".')
 
-    for url, path in ((video_url, video_path), (audio_url, audio_path)):
-        info(f'Downloading "{url}..." to "{path.as_posix()}"...')
-        download_file(url, path)
+    info(f'Downloading content from "{video_url}"...')
+    output_file_extension = get_extension_from_url(video_url)
 
-    def count_to(number: int, text: str) -> None:
-        global count_to_attempt
+    if output_file_extension:
+        video_path = Path(video_path.as_posix().replace(static_internal_temp_file_extension, output_file_extension))
+    else:
+        video_path = Path(video_path.as_posix().replace(static_internal_temp_file_extension, '.mp4'))
 
-        for i in range(number, 0, -1):
-            info(text.format(count_to_attempt, i), extra={'end': '\r'})
-            sleep(1)
+    download_file(video_url, video_path.resolve(), 30)
 
-        count_to_attempt += 1
+    info(f'Downloading content from "{audio_url}"...')
+    output_file_extension = get_extension_from_url(audio_url)
 
-    count_to_attempt = 1
+    if output_file_extension:
+        audio_path = Path(audio_path.as_posix().replace(static_internal_temp_file_extension, output_file_extension))
+    else:
+        audio_path = Path(audio_path.as_posix().replace(static_internal_temp_file_extension, '.mp3'))
 
-    while not video_path.exists() or not audio_path.exists():
-        count_to(8, 'merger-{} - Checking if the files have been downloaded in {} seconds...')
-
-        if video_path.exists() and audio_path.exists():
-            break
+    download_file(audio_url, audio_path.resolve(), 30)
 
     merge_media_files(ffmpeg_path, video_path, audio_path, output_path)
 
     info('Cleaning the application temporary directory...')
     rmtree(temp_dir)
+
+    info('Application finished successfully!')
 
 
 def parse_arguments():
