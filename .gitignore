@@ -10,4 +10,5 @@ __pycache__
 # ...
 
 # Extensions
+*.env
 *.log
